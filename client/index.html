@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Noersavetik — Unduh Video TikTok Tanpa Watermark</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script>
+  // Guarded: if the Tailwind CDN script failed to load (no internet,
+  // or the domain is blocked on this network), skip config instead
+  // of throwing "tailwind is not defined" and breaking the page.
+  if (window.tailwind) {
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#0B0B10',
+            panel: '#131219',
+            panel2: '#1B1A24',
+            hair: '#2A2833',
+            fog: '#8B8794',
+            paper: '#F5F3F7',
+            cyan: '#21E6D6',
+            mag: '#F23E7C',
+          },
+          fontFamily: {
+            display: ['"Space Grotesk"', 'sans-serif'],
+            body: ['Inter', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          },
+        },
+      },
+    };
+  } else {
+    console.warn('Tailwind CDN gagal dimuat — cek koneksi internet. Halaman akan tampil tanpa styling.');
+  }
+</script>
+
+<style>
+  * { box-sizing: border-box; }
+  html, body { background: #0B0B10; }
+  body { font-family: 'Inter', sans-serif; }
+
+  /* ---- signature: gradient-edge device frame ---- */
+  .device-frame {
+    position: relative;
+    border-radius: 32px;
+    padding: 1px; /* gradient border thickness */
+    background: linear-gradient(140deg, rgba(33,230,214,0.55), rgba(42,40,51,0.4) 35%, rgba(242,62,124,0.5));
+  }
+  .device-frame-inner {
+    border-radius: 31px;
+    background: #131219;
+    border: 1px solid rgba(255,255,255,0.02);
+  }
+
+  /* Pulses gently while a request is in flight */
+  @keyframes edgePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+  .device-frame.is-loading {
+    animation: edgePulse 1.6s ease-in-out infinite;
+  }
+
+  /* Logo mark: two offset dots, screen-blended (nods to TikTok's duotone glitch mark
+     without reproducing it) */
+  .mark {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+  .mark span {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 9999px;
+    mix-blend-mode: screen;
+  }
+  .mark .c { background: #21E6D6; top: 0; left: 0; }
+  .mark .m { background: #F23E7C; bottom: 0; right: 0; }
+
+  /* Result media keeps a 9:16 window like the source format */
+  .reel-window {
+    aspect-ratio: 9 / 16;
+    max-height: 60vh;
+  }
+
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: fadeInUp 0.4s ease-out forwards; }
+
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(30px); }
+  }
+  .toast { animation: toastIn 0.25s ease-out forwards; }
+  .toast.toast-hide { animation: toastOut 0.25s ease-in forwards; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.8s linear infinite; }
+
+  /* ---- reveal-on-scroll / on-load ---- */
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* FAQ rows lift slightly on hover/focus to invite the tap */
+  details.faq-item {
+    transition: transform 0.25s ease;
+  }
+  details.faq-item:hover {
+    transform: translateX(2px);
+  }
+
+  /* Result thumbnail gets a soft zoom when hovered (desktop) */
+  .reel-window img {
+    transition: transform 0.5s ease;
+  }
+  .reel-window:hover img {
+    transform: scale(1.03);
+  }
+
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(33,230,214,0.25); border-radius: 8px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .device-frame.is-loading, .fade-in, .toast, .toast.toast-hide, .spin,
+    .reveal, details.faq-item, .reel-window img {
+      animation: none !important;
+      transition: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>
+</head>
+<body class="bg-ink text-paper min-h-screen flex flex-col items-center px-4 py-10 sm:py-14">
+
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-[90%] max-w-xs"></div>
+
+  <!-- Header -->
+  <header class="reveal text-center mb-8 max-w-sm">
+    <div class="flex items-center justify-center gap-2.5 mb-4">
+      <span class="mark"><span class="c"></span><span class="m"></span></span>
+      <span class="font-mono text-[11px] tracking-[0.2em] text-fog uppercase">Noersavetik</span>
+    </div>
+    <h1 class="font-display font-semibold text-[28px] sm:text-4xl leading-[1.15] tracking-tight">
+      Simpan video TikTok,<br class="hidden sm:block" /> tanpa watermark.
+    </h1>
+    <p class="text-fog text-sm mt-3">Tempel link, dan videonya siap disimpan dalam hitungan detik.</p>
+    <nav class="flex items-center justify-center gap-4 mt-5 font-mono text-[10px] tracking-[0.14em] uppercase">
+      <a href="#cara-pakai" class="text-fog hover:text-paper transition">Cara Pakai</a>
+      <span class="text-hair">/</span>
+      <a href="#faq" class="text-fog hover:text-paper transition">FAQ</a>
+      <span class="text-hair">/</span>
+      <a href="#tentang" class="text-fog hover:text-paper transition">Tentang</a>
+    </nav>
+  </header>
+
+  <!-- Device frame -->
+  <main id="device-frame" class="reveal device-frame w-full max-w-sm">
+    <div class="device-frame-inner p-4 sm:p-5">
+
+      <!-- Control row -->
+      <div class="flex items-center justify-between mb-3 px-0.5">
+        <span class="font-mono text-[10px] tracking-[0.18em] text-fog uppercase">Tempel link</span>
+        <span id="status-label" class="font-mono text-[10px] tracking-[0.18em] text-fog uppercase">Siap</span>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <input
+          id="tiktok-url"
+          type="text"
+          placeholder="https://vt.tiktok.com/..."
+          class="w-full bg-panel2 border border-hair rounded-xl px-3.5 py-3 text-sm placeholder-fog/60 focus:outline-none focus:border-cyan/60 transition"
+        />
+        <button
+          id="download-btn"
+          class="w-full bg-paper text-ink hover:bg-cyan hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98] transition rounded-xl px-4 py-3 font-display font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+        >
+          <span id="btn-text">Unduh Sekarang</span>
+          <svg id="btn-spinner" class="hidden spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+            <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Skeleton -->
+      <div id="skeleton" class="hidden mt-4 animate-pulse">
+        <div class="reel-window w-full bg-panel2 rounded-2xl mb-3"></div>
+        <div class="h-3 bg-panel2 rounded w-4/5 mb-2"></div>
+        <div class="h-3 bg-panel2 rounded w-2/5 mb-4"></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="h-10 bg-panel2 rounded-xl"></div>
+          <div class="h-10 bg-panel2 rounded-xl"></div>
+        </div>
+      </div>
+
+      <!-- Result -->
+      <section id="result-card" class="hidden mt-4">
+        <div class="reel-window w-full overflow-hidden rounded-2xl bg-panel2 border border-hair">
+          <img id="result-thumbnail" src="" alt="Thumbnail TikTok" class="w-full h-full object-cover" />
+        </div>
+
+        <h2 id="result-title" class="text-sm font-medium mt-3 mb-4 leading-snug text-paper/90"></h2>
+
+        <div class="grid grid-cols-2 gap-2">
+          <a id="video-download-btn" href="#" download target="_blank" rel="noopener"
+            class="flex items-center justify-center gap-1.5 bg-cyan text-ink hover:opacity-90 transition rounded-xl px-3 py-2.5 font-display font-semibold text-xs active:scale-[0.98]">
+            Video
+          </a>
+          <a id="audio-download-btn" href="#" download target="_blank" rel="noopener"
+            class="flex items-center justify-center gap-1.5 bg-mag text-ink hover:opacity-90 transition rounded-xl px-3 py-2.5 font-display font-semibold text-xs active:scale-[0.98]">
+            Audio
+          </a>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 mt-2">
+          <button id="copy-video-btn"
+            class="flex items-center justify-center gap-1.5 bg-transparent hover:bg-panel2 border border-hair transition rounded-xl px-3 py-2 font-mono text-[10px] tracking-wide uppercase text-fog active:scale-[0.98]">
+            Salin URL Video
+          </button>
+          <button id="copy-audio-btn"
+            class="flex items-center justify-center gap-1.5 bg-transparent hover:bg-panel2 border border-hair transition rounded-xl px-3 py-2 font-mono text-[10px] tracking-wide uppercase text-fog active:scale-[0.98]">
+            Salin URL Audio
+          </button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Cara Pakai -->
+  <section id="cara-pakai" class="reveal w-full max-w-sm mt-14 scroll-mt-10">
+    <div class="flex items-center gap-2 mb-5">
+      <span class="w-1.5 h-1.5 rounded-full bg-cyan"></span>
+      <span class="font-mono text-[10px] tracking-[0.18em] text-fog uppercase">Cara Pakai</span>
+    </div>
+    <ol class="space-y-4">
+      <li class="flex gap-3">
+        <span class="font-display font-semibold text-cyan text-sm w-5 flex-shrink-0">01</span>
+        <p class="text-sm text-paper/85 leading-relaxed">Buka video TikTok yang mau kamu simpan, lalu ketuk tombol <span class="text-paper">Bagikan</span> dan pilih <span class="text-paper">Salin Tautan</span>.</p>
+      </li>
+      <li class="flex gap-3">
+        <span class="font-display font-semibold text-cyan text-sm w-5 flex-shrink-0">02</span>
+        <p class="text-sm text-paper/85 leading-relaxed">Tempel tautan tersebut ke kolom di atas, lalu ketuk <span class="text-paper">Unduh Sekarang</span>.</p>
+      </li>
+      <li class="flex gap-3">
+        <span class="font-display font-semibold text-cyan text-sm w-5 flex-shrink-0">03</span>
+        <p class="text-sm text-paper/85 leading-relaxed">Pilih <span class="text-paper">Video</span> atau <span class="text-paper">Audio</span> untuk menyimpan filenya ke perangkatmu.</p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq" class="reveal w-full max-w-sm mt-14 scroll-mt-10">
+    <div class="flex items-center gap-2 mb-5">
+      <span class="w-1.5 h-1.5 rounded-full bg-mag"></span>
+      <span class="font-mono text-[10px] tracking-[0.18em] text-fog uppercase">FAQ</span>
+    </div>
+    <div class="divide-y divide-hair border-y border-hair">
+      <details class="group faq-item py-4">
+        <summary class="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-paper/90">
+          Apakah videonya benar-benar tanpa watermark?
+          <span class="font-mono text-fog text-base group-open:rotate-45 transition-transform">+</span>
+        </summary>
+        <p class="text-sm text-fog leading-relaxed mt-2.5">Ya. Noersavetik mengambil versi video yang sudah bersih dari watermark TikTok, selama tersedia dari sumbernya.</p>
+      </details>
+      <details class="group faq-item py-4">
+        <summary class="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-paper/90">
+          Apakah harus punya akun untuk memakainya?
+          <span class="font-mono text-fog text-base group-open:rotate-45 transition-transform">+</span>
+        </summary>
+        <p class="text-sm text-fog leading-relaxed mt-2.5">Tidak. Tempel tautan lalu unduh — tanpa login, tanpa daftar.</p>
+      </details>
+      <details class="group faq-item py-4">
+        <summary class="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-paper/90">
+          Kenapa proses unduh gagal?
+          <span class="font-mono text-fog text-base group-open:rotate-45 transition-transform">+</span>
+        </summary>
+        <p class="text-sm text-fog leading-relaxed mt-2.5">Biasanya karena tautan yang ditempel bukan tautan video TikTok yang valid, atau videonya bersifat privat. Coba salin ulang tautannya langsung dari tombol Bagikan di TikTok.</p>
+      </details>
+      <details class="group faq-item py-4">
+        <summary class="flex items-center justify-between cursor-pointer list-none text-sm font-medium text-paper/90">
+          Apakah video dan audionya disimpan di server Noersavetik?
+          <span class="font-mono text-fog text-base group-open:rotate-45 transition-transform">+</span>
+        </summary>
+        <p class="text-sm text-fog leading-relaxed mt-2.5">Tidak. File langsung diproses dan diteruskan ke perangkatmu, tidak disimpan di server.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Tentang -->
+  <section id="tentang" class="reveal w-full max-w-sm mt-14 scroll-mt-10">
+    <div class="flex items-center gap-2 mb-5">
+      <span class="mark"><span class="c"></span><span class="m"></span></span>
+      <span class="font-mono text-[10px] tracking-[0.18em] text-fog uppercase">Tentang</span>
+    </div>
+    <p class="text-sm text-paper/85 leading-relaxed">
+      Noersavetik adalah alat sederhana untuk menyimpan video TikTok tanpa watermark, dikembangkan oleh <span class="text-paper">Noerzpedia</span>. Dibuat ringan dan cepat, cukup tempel satu tautan untuk langsung mendapatkan video maupun audionya.
+    </p>
+  </section>
+
+  <footer class="mt-14 text-center font-mono text-[10px] tracking-[0.18em] text-fog/70 uppercase">
+    Noersavetik — dibuat oleh Noerzpedia
+  </footer>
+
+  <script>
+    // --- Element references ---
+    const urlInput = document.getElementById('tiktok-url');
+    const downloadBtn = document.getElementById('download-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    const statusLabel = document.getElementById('status-label');
+    const deviceFrame = document.getElementById('device-frame');
+
+    const skeleton = document.getElementById('skeleton');
+    const resultCard = document.getElementById('result-card');
+
+    const resultThumbnail = document.getElementById('result-thumbnail');
+    const resultTitle = document.getElementById('result-title');
+    const videoDownloadBtn = document.getElementById('video-download-btn');
+    const audioDownloadBtn = document.getElementById('audio-download-btn');
+    const copyVideoBtn = document.getElementById('copy-video-btn');
+    const copyAudioBtn = document.getElementById('copy-audio-btn');
+
+    const toastContainer = document.getElementById('toast-container');
+
+    // Loose check for immediate frontend feedback; backend does the
+    // authoritative validation.
+    const TIKTOK_URL_PATTERN = /^https?:\/\/(www\.|vt\.|vm\.|m\.)?tiktok\.com\/.+/i;
+
+    let currentVideoUrl = '';
+    let currentAudioUrl = '';
+
+    // --- Toast notifications ---
+    function showToast(message, type = 'success') {
+      const isSuccess = type === 'success';
+      const toast = document.createElement('div');
+
+      toast.className = `toast bg-panel border ${
+        isSuccess ? 'border-cyan/40' : 'border-mag/40'
+      } rounded-xl pl-3 pr-4 py-3 flex items-start gap-2.5 shadow-lg`;
+
+      toast.innerHTML = `
+        <span class="mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${isSuccess ? 'bg-cyan' : 'bg-mag'}"></span>
+        <span class="text-xs text-paper/90 leading-snug">${message}</span>
+      `;
+
+      toastContainer.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.add('toast-hide');
+        setTimeout(() => toast.remove(), 250);
+      }, 3000);
+    }
+
+    // --- UI state helpers ---
+    function setLoading(isLoading) {
+      downloadBtn.disabled = isLoading;
+      btnText.textContent = isLoading ? 'Memproses...' : 'Unduh Sekarang';
+      btnSpinner.classList.toggle('hidden', !isLoading);
+      statusLabel.textContent = isLoading ? 'Memproses' : 'Siap';
+      deviceFrame.classList.toggle('is-loading', isLoading);
+
+      if (isLoading) {
+        resultCard.classList.add('hidden');
+        skeleton.classList.remove('hidden');
+      } else {
+        skeleton.classList.add('hidden');
+      }
+    }
+
+    function renderResult(data) {
+      resultThumbnail.src = data.thumbnail || '';
+      resultTitle.textContent = data.title || 'Video TikTok';
+
+      currentVideoUrl = data.video || '';
+      currentAudioUrl = data.audio || '';
+
+      if (currentVideoUrl) {
+        videoDownloadBtn.href = currentVideoUrl;
+        videoDownloadBtn.classList.remove('hidden');
+      } else {
+        videoDownloadBtn.classList.add('hidden');
+      }
+
+      if (currentAudioUrl) {
+        audioDownloadBtn.href = currentAudioUrl;
+        audioDownloadBtn.classList.remove('hidden');
+      } else {
+        audioDownloadBtn.classList.add('hidden');
+      }
+
+      resultCard.classList.remove('hidden');
+      resultCard.classList.remove('fade-in');
+      void resultCard.offsetWidth; // restart animation on repeat downloads
+      resultCard.classList.add('fade-in');
+    }
+
+    // --- Main download handler ---
+    async function handleDownload() {
+      const url = urlInput.value.trim();
+
+      if (!url) {
+        showToast('Masukkan link TikTok terlebih dahulu.', 'error');
+        return;
+      }
+
+      if (!TIKTOK_URL_PATTERN.test(url)) {
+        showToast('Link TikTok tidak valid.', 'error');
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const response = await fetch(`/api/tiktok?url=${encodeURIComponent(url)}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          showToast(data.message || 'Gagal mengambil data TikTok.', 'error');
+          return;
+        }
+
+        renderResult(data);
+        showToast('Video berhasil ditemukan!', 'success');
+      } catch (error) {
+        showToast('Terjadi kesalahan. Coba lagi.', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // --- Copy to clipboard helper ---
+    async function copyToClipboard(text, label) {
+      if (!text) {
+        showToast(`URL ${label} tidak tersedia.`, 'error');
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast(`URL ${label} disalin!`, 'success');
+      } catch (error) {
+        showToast(`Gagal menyalin URL ${label}.`, 'error');
+      }
+    }
+
+    // --- Event listeners ---
+    downloadBtn.addEventListener('click', handleDownload);
+
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleDownload();
+      }
+    });
+
+    copyVideoBtn.addEventListener('click', () => copyToClipboard(currentVideoUrl, 'Video'));
+    copyAudioBtn.addEventListener('click', () => copyToClipboard(currentAudioUrl, 'Audio'));
+
+    // --- Reveal animation: header + device frame stagger in on load,
+    //     the sections below fade in as they scroll into view ---
+    const revealEls = document.querySelectorAll('.reveal');
+
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.12 }
+      );
+
+      revealEls.forEach((el, index) => {
+        // Header and device frame (the first two, already in view on
+        // load) get a quick stagger; sections further down reveal
+        // individually as the user scrolls to them.
+        const delay = index < 2 ? index * 120 : 0;
+        el.style.transitionDelay = `${delay}ms`;
+        observer.observe(el);
+      });
+    } else {
+      // Fallback: no IntersectionObserver support, just show everything.
+      revealEls.forEach((el) => el.classList.add('is-visible'));
+    }
+  </script>
+</body>
+</html>
