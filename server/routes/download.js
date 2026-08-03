@@ -53,14 +53,32 @@ router.get('/tiktok', async (req, res) => {
 
     const data = response.data;
 
-    // The third-party API's exact shape can vary, so we defensively
-    // pull out the fields we need instead of trusting a fixed shape.
-    const result = data?.result || data?.data || data;
+    // Confirmed actual shape from api.saipulanuar.eu.org:
+    // {
+    //   status: true,
+    //   creator: "...",
+    //   result: {
+    //     title_audio: "...",
+    //     thumbnail: "...",
+    //     video: ["<url>"],   // array with one URL
+    //     audio: ["<url>"]    // array with one URL
+    //   }
+    // }
+    if (!data?.status || !data?.result) {
+      return res.status(502).json({
+        success: false,
+        message: 'Failed to fetch TikTok data.',
+      });
+    }
 
-    const title = result?.title || result?.desc || 'TikTok Video';
-    const thumbnail = result?.cover || result?.thumbnail || result?.image || null;
-    const video = result?.video || result?.play || result?.no_watermark || null;
-    const audio = result?.music || result?.audio || null;
+    const result = data.result;
+
+    const title = result.title_audio || result.title || result.desc || 'TikTok Video';
+    const thumbnail = result.thumbnail || result.cover || null;
+
+    // video/audio come back as arrays — take the first URL in each.
+    const video = Array.isArray(result.video) ? result.video[0] : result.video || null;
+    const audio = Array.isArray(result.audio) ? result.audio[0] : result.audio || null;
 
     if (!video && !audio) {
       // Upstream responded, but didn't give us anything usable.
@@ -91,3 +109,4 @@ router.get('/tiktok', async (req, res) => {
 });
 
 module.exports = router;
+  
